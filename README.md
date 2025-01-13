@@ -6,13 +6,15 @@ Turns any website that loads the script into the asteroids game where you get to
 
 ## How to include in your website?
 
-Define the trigger that should load the easter egg and assign an id to it:
+Place the `asteroids.js` file into your frontend's static assets (where it can be loaded directly from the browser).
+
+In your frontend, define the trigger that should load the easter egg and assign an id to it:
 ```html
 <!-- Trigger element for the Easter egg -->
 <div id="easter-egg-trigger">Launch Game</div>
 ```
 
-Attach a click event listener to the trigger element and load the asteroids js file from the server when triggered.
+Attach a click event listener to the trigger element and load the `asteroids.js` file when triggered. The file is configured to autorun when loaded:
 ```javascript
 document.getElementById('easter-egg-trigger').addEventListener('click', () => {
     // Prevent loading multiple instances
