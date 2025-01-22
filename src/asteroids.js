@@ -16,29 +16,24 @@
 
     const ctx = canvas.getContext('2d');
 
-    let spaceship = { x: canvas.width / 2, y: canvas.height / 2, angle: 0 };
+    let spaceship = { x: canvas.width / 2, y: canvas.height / 2, angle: 0, velocityX: 0, velocityY: 0, rotationSpeed: 0 };
     let bullets = [];
     let explosions = [];
     const spaceshipSize = 20;
     const bulletSpeed = 5;
     const explosionDuration = 500; // Explosion lasts 500ms
-    const targetDistanceThreshold = spaceshipSize * 4; // Distance threshold for hitting elements
+    const friction = 0.98; // Gradual slowdown factor
 
-    const keyState = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, Space: false };
+    const keyState = { ArrowUp: false, ArrowLeft: false, ArrowRight: false, Space: false };
 
     document.addEventListener('keydown', (e) => { if (keyState[e.key] !== undefined) keyState[e.key] = true; });
     document.addEventListener('keyup', (e) => { if (keyState[e.key] !== undefined) keyState[e.key] = false; });
-
-    function createExplosion(x, y) {
-        explosions.push({ x, y, radius: 0, alpha: 1, startTime: Date.now() });
-    }
 
     function drawSpaceship() {
         ctx.save();
         ctx.translate(spaceship.x, spaceship.y);
         ctx.rotate(spaceship.angle);
 
-        // Draw the triangle spaceship
         ctx.beginPath();
         ctx.moveTo(spaceshipSize, 0);
         ctx.lineTo(-spaceshipSize / 2, -spaceshipSize / 2);
@@ -50,7 +45,6 @@
         ctx.fill();
         ctx.stroke();
 
-        // Draw afterburner when accelerating
         if (keyState.ArrowUp) {
             ctx.beginPath();
             ctx.moveTo(-spaceshipSize / 2, -spaceshipSize / 4);
@@ -68,30 +62,44 @@
     }
 
     function drawBullet(bullet) {
+        ctx.save();
+        ctx.translate(bullet.x, bullet.y);
+        ctx.rotate(bullet.angle);
         ctx.beginPath();
-        ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = 'red';
-        ctx.fill();
+        ctx.moveTo(-8, 0);
+        ctx.lineTo(8, 0);
+        ctx.strokeStyle = 'lime';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.restore();
     }
 
     function drawExplosion(explosion) {
         ctx.beginPath();
         ctx.arc(explosion.x, explosion.y, explosion.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 165, 0, ${explosion.alpha})`; // Orange with fading alpha
+        ctx.fillStyle = `rgba(255, 165, 0, ${explosion.alpha})`;
         ctx.fill();
     }
 
     function updateSpaceship() {
-        const movementSpeed = 4; // Increased speed for faster movement
+        const movementSpeed = 0.3;
+        const rotationSpeed = 0.05;
 
         if (keyState.ArrowUp) {
-            spaceship.x += Math.cos(spaceship.angle) * movementSpeed;
-            spaceship.y += Math.sin(spaceship.angle) * movementSpeed;
+            spaceship.velocityX += Math.cos(spaceship.angle) * movementSpeed;
+            spaceship.velocityY += Math.sin(spaceship.angle) * movementSpeed;
         }
-        if (keyState.ArrowLeft) spaceship.angle -= 0.05;
-        if (keyState.ArrowRight) spaceship.angle += 0.05;
+        if (keyState.ArrowLeft) spaceship.rotationSpeed = -rotationSpeed;
+        if (keyState.ArrowRight) spaceship.rotationSpeed = rotationSpeed;
 
-        // Prevent spaceship from going out of bounds
+        spaceship.x += spaceship.velocityX;
+        spaceship.y += spaceship.velocityY;
+        spaceship.angle += spaceship.rotationSpeed;
+
+        spaceship.velocityX *= keyState.ArrowUp ? friction : 1;
+        spaceship.velocityY *= keyState.ArrowUp ? friction : 1;
+        spaceship.rotationSpeed = 0;
+
         if (spaceship.x < 0) spaceship.x = canvas.width;
         if (spaceship.x > canvas.width) spaceship.x = 0;
         if (spaceship.y < 0) spaceship.y = canvas.height;
@@ -103,23 +111,20 @@
             bullet.x += bullet.vx;
             bullet.y += bullet.vy;
 
-            // Check for collisions with elements at a distance
             const elements = [...document.body.querySelectorAll('*')]
-                .filter(el => el !== canvas && el.children.length === 0); // Exclude container elements
+                .filter(el => el !== canvas && el.children.length === 0);
             elements.forEach(el => {
                 const rect = el.getBoundingClientRect();
-                const elCenterX = (rect.left + rect.right) / 2;
-                const elCenterY = (rect.top + rect.bottom) / 2;
-
-                const distance = Math.sqrt((bullet.x - elCenterX) ** 2 + (bullet.y - elCenterY) ** 2);
-                if (distance < targetDistanceThreshold && bullet.x > rect.left && bullet.x < rect.right && bullet.y > rect.top && bullet.y < rect.bottom) {
-                    createExplosion(elCenterX, elCenterY);
+                if (
+                    bullet.x > rect.left && bullet.x < rect.right &&
+                    bullet.y > rect.top && bullet.y < rect.bottom
+                ) {
+                    explosions.push({ x: bullet.x, y: bullet.y, radius: 10, alpha: 1, startTime: Date.now() });
+                    el.remove();
                     bullets.splice(index, 1);
-                    el.remove(); // Remove the element after explosion
                 }
             });
 
-            // Remove bullets that are offscreen
             if (bullet.x < 0 || bullet.x > canvas.width || bullet.y < 0 || bullet.y > canvas.height) {
                 bullets.splice(index, 1);
             }
@@ -131,36 +136,23 @@
         explosions = explosions.filter(explosion => {
             const elapsed = now - explosion.startTime;
             if (elapsed < explosionDuration) {
-                explosion.radius += 1; // Increase the explosion size
-                explosion.alpha = 1 - elapsed / explosionDuration; // Fade out
+                explosion.radius += 1;
+                explosion.alpha = 1 - elapsed / explosionDuration;
                 return true;
             }
             return false;
         });
     }
 
-    function gameLoop() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawSpaceship();
-        bullets.forEach(drawBullet);
-        explosions.forEach(drawExplosion);
-
-        updateSpaceship();
-        updateBullets();
-        updateExplosions();
-
-        requestAnimationFrame(gameLoop);
-    }
-
     document.addEventListener('keydown', (e) => {
         if (e.code === 'Space' && !keyState.Space) {
             keyState.Space = true;
-            const angle = spaceship.angle;
             bullets.push({
-                x: spaceship.x + Math.cos(angle) * spaceshipSize,
-                y: spaceship.y + Math.sin(angle) * spaceshipSize,
-                vx: Math.cos(angle) * bulletSpeed,
-                vy: Math.sin(angle) * bulletSpeed,
+                x: spaceship.x + Math.cos(spaceship.angle) * spaceshipSize,
+                y: spaceship.y + Math.sin(spaceship.angle) * spaceshipSize,
+                vx: Math.cos(spaceship.angle) * bulletSpeed,
+                vy: Math.sin(spaceship.angle) * bulletSpeed,
+                angle: spaceship.angle
             });
         }
     });
@@ -169,6 +161,16 @@
         if (e.code === 'Space') keyState.Space = false;
     });
 
+    function gameLoop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawSpaceship();
+        bullets.forEach(drawBullet);
+        explosions.forEach(drawExplosion);
+        updateSpaceship();
+        updateBullets();
+        updateExplosions();
+        requestAnimationFrame(gameLoop);
+    }
+
     gameLoop();
 })();
-
